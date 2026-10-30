@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ducati Scrambler 1100</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  /* Layout: panel de control de la moto. Cabecera con el cuentakilómetros, cifras clave, gráfica de precio en eje de tiempo sept-jul, tramos de 2.000 km, tablas. */
+  :root {
+    --bg: #f1efec;
+    --surface: #ffffff;
+    --fg: #1d1b19;
+    --muted: #6a655f;
+    --line: #e1ddd7;
+    --accent: #c4122f;
+    --accent-ink: #ffffff;
+    --warn: #96560a;
+    --font-display: 'Barlow Condensed', 'Arial Narrow', Arial, sans-serif;
+    --font-body: 'Barlow', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #131211;
+      --surface: #1d1b19;
+      --fg: #efebe6;
+      --muted: #a39d94;
+      --line: #302d2a;
+      --accent: #ff5468;
+      --accent-ink: #1d1b19;
+      --warn: #e5a04a;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #131211;
+    --surface: #1d1b19;
+    --fg: #efebe6;
+    --muted: #a39d94;
+    --line: #302d2a;
+    --accent: #ff5468;
+    --accent-ink: #1d1b19;
+    --warn: #e5a04a;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.45;
+    padding-block: 24px 48px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+  .wrap { max-width: 1100px; margin: 0 auto; display: flex; flex-direction: column; gap: 32px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 12px 24px; padding-bottom: 16px; border-bottom: 3px solid var(--accent); }
+  header h1 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: clamp(2rem, 7vw, 3.2rem); line-height: 1; text-transform: uppercase; letter-spacing: 0.02em; text-wrap: balance; }
+  header .sub { margin: 6px 0 0; color: var(--muted); }
+  .odo { text-align: right; }
+  .odo .lbl { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); }
+  .odo .val { font-family: var(--font-display); font-weight: 600; font-size: 2.2rem; line-height: 1.05; font-variant-numeric: tabular-nums; }
+
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+  .kpi .lbl { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .kpi .val { font-family: var(--font-display); font-weight: 600; font-size: 1.9rem; line-height: 1.15; margin-top: 2px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .kpi .note { font-size: 0.8rem; color: var(--muted); margin-top: 2px; }
+  .kpi.total { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .kpi.total .lbl, .kpi.total .note { color: var(--accent-ink); opacity: 0.85; }
+
+  section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  h2 { margin: 0; font-family: var(--font-display); font-weight: 700; font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  .desc { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 12px; min-width: 0; }
+  .scroll { overflow-x: auto; }
+  .chart { min-width: 560px; }
+  .chart svg { display: block; width: 100%; height: auto; }
+  .ax text { fill: var(--muted); font-family: var(--font-body); font-size: 12px; }
+  .ax path, .ax line { stroke: var(--line); }
+  .grid-line { stroke: var(--line); }
+  .price-line { fill: none; stroke: var(--accent); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  .avg-line { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 5; }
+  .dot { fill: var(--surface); stroke: var(--accent); stroke-width: 2.5; }
+  .dot-label { fill: var(--fg); font-family: var(--font-body); font-size: 12px; font-weight: 600; }
+
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th { padding: 8px 12px; text-align: right; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 2px solid var(--line); white-space: nowrap; }
+  td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  th.l, td.l { text-align: left; }
+  td.wrap-ok { white-space: normal; }
+  .flag { color: var(--warn); font-weight: 600; }
+  .empty { margin: 4px 0 0; padding: 12px; text-align: center; color: var(--muted); }
+  .foot { margin: 0; font-size: 0.85rem; color: var(--muted); }
+  .foot b { color: var(--warn); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Ducati Scrambler 1100</h1>
+      <p class="sub">Combustible y gastos · sept 2026 – jul 2027</p>
+    </div>
+    <div class="odo">
+      <div class="lbl">Cuentakilómetros</div>
+      <div class="val" id="odo">—</div>
+    </div>
+  </header>
+
+  <div class="kpis">
+    <div class="kpi"><div class="lbl">Km recorridos</div><div class="val" id="v-km">—</div><div class="note">Desde el primer repostaje</div></div>
+    <div class="kpi"><div class="lbl">Litros cargados</div><div class="val" id="v-l">—</div><div class="note">Acumulado</div></div>
+    <div class="kpi"><div class="lbl">Precio medio</div><div class="val" id="v-m">—</div><div class="note">€ / litro</div></div>
+    <div class="kpi"><div class="lbl">Próximo tramo</div><div class="val" id="v-c">—</div><div class="note" id="v-cn">—</div></div>
+    <div class="kpi"><div class="lbl">Combustible</div><div class="val" id="v-f">—</div><div class="note">Repostajes</div></div>
+    <div class="kpi total"><div class="lbl">Gasto total</div><div class="val" id="v-t">—</div><div class="note">Combustible + mantenimiento</div></div>
+  </div>
+
+  <section>
+    <h2>Precio por litro</h2>
+    <p class="desc">Línea roja: precio de cada repostaje. Línea discontinua: media acumulada. Eje de tiempo de septiembre 2026 a julio 2027.</p>
+    <div class="panel scroll"><div class="chart"><svg id="chart-precio" role="img" aria-label="Evolución del precio por litro"></svg></div></div>
+  </section>
+
+  <section>
+    <h2>Consumo por tramos de 2.000 km</h2>
+    <p class="desc">Un tramo se cierra en el primer repostaje que supera los 2.000 km (pueden ser 2.000 y pico). Consumo = litros del tramo ÷ km × 100. Parte del repostaje del 25/09, que probablemente no fue a depósito lleno, así que el primer tramo es aproximado.</p>
+    <div class="panel">
+      <div class="scroll">
+        <table id="tabla-tramos">
+          <thead><tr><th class="l">Tramo</th><th class="l">Cierre</th><th>Km</th><th>Litros</th><th>L/100 km</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="empty" id="tramos-vacio" hidden></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>Repostajes</h2>
+    <div class="panel">
+      <div class="scroll">
+        <table id="tabla-rep">
+          <thead><tr><th>#</th><th class="l">Fecha</th><th>Km totales</th><th>Km parc.</th><th>Litros</th><th>L acum.</th><th>€/L</th><th>Media €/L</th><th>Importe</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Mantenimiento</h2>
+    <p class="desc">Neumáticos, revisiones y reparaciones.</p>
+    <div class="panel">
+      <div class="scroll">
+        <table id="tabla-mant">
+          <thead><tr><th class="l">Concepto</th><th class="l">Fecha</th><th>Km</th><th>Importe</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  const nf = (d) => new Intl.NumberFormat('es-ES', {minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: true});
+  const fmt = {km: v => nf(0).format(v) + ' km', lt: v => nf(2).format(v) + ' L', eur: v => nf(2).format(v) + ' €', el: v => nf(3).format(v)};
+  const fdate = (s) => { const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
+  const $ = (id) => document.getElementById(id);
+  const TRAMO_KM = 2000;
+
+  // Datos registrados (hoja gastos-ducati-scrambler-1100). fiable: false = consumo no usable.
+  const data = {
+    repostajes: [
+      {n: 1, fecha: '2026-09-25', km_totales: 43448, litros: 5.16, eur_l: 2.024, importe: 10.44, fiable: true},
+      {n: 2, fecha: '2026-10-03', km_totales: 43528, litros: 12.29, eur_l: 1.749, importe: 21.50, fiable: false},
+      {n: 3, fecha: '2026-10-13', km_totales: 43725, litros: 12.11, eur_l: 1.719, importe: 20.82, fiable: true},
+      {n: 4, fecha: '2026-10-29', km_totales: 44117, litros: 8.58, eur_l: 1.669, importe: 14.32, fiable: true}
+    ],
+    mantenimiento: [
+      {fecha: '2026-09-25', km: 43400, concepto: 'Neumáticos Michelin Road 6', importe: 390.00}
+    ]
+  };
+
+  function procesarDatos(raw) {
+    const km0 = raw.repostajes[0].km_totales;
+    let lAc = 0, eAc = 0, prev = km0;
+    const acum = raw.repostajes.map((x, i) => {
+      lAc += x.litros; eAc += x.importe;
+      const parc = x.km_totales - prev;
+      const consumo = i === 0 ? null : x.litros / parc * 100;
+      prev = x.km_totales;
+      return {n: x.n, fecha: x.fecha, km_totales: x.km_totales, km_parciales: parc, litros: x.litros, litros_acum: +lAc.toFixed(2), eur_l: x.eur_l, importe: x.importe, importe_acum: +eAc.toFixed(2), media_eur_l: +(eAc / lAc).toFixed(3), consumo: consumo, fiable: x.fiable};
+    });
+    const tramos = [];
+    let ini = acum[0], litros = 0;
+    acum.slice(1).forEach(x => {
+      litros += x.litros;
+      const km = x.km_totales - ini.km_totales;
+      if (km >= TRAMO_KM) {
+        tramos.push({tramo: tramos.length + 1, fecha: x.fecha, km_cierre: x.km_totales, km, litros: +litros.toFixed(2), consumo_l100: +(litros / km * 100).toFixed(2)});
+        ini = x; litros = 0;
+      }
+    });
+    const u = acum[acum.length - 1];
+    const t = tramos[tramos.length - 1];
+    const iniKm = t ? t.km_cierre : acum[0].km_totales;
+    const mant = raw.mantenimiento.reduce((s, m) => s + Number(m.importe), 0);
+    const resumen = {
+      km_actual: u.km_totales,
+      km_desde_cero: u.km_totales - km0,
+      litros_acum: u.litros_acum,
+      media_eur_l: u.media_eur_l,
+      ultimo_consumo: t ? t.consumo_l100 : null,
+      faltan_km: Math.max(0, TRAMO_KM - (u.km_totales - iniKm)),
+      proximo_cierre: iniKm + TRAMO_KM,
+      combustible: u.importe_acum,
+      mantenimiento: +mant.toFixed(2),
+      total: +(u.importe_acum + mant).toFixed(2)
+    };
+    return {acum, tramos, resumen};
+  }
+
+  function render() {
+    const {acum, tramos, resumen} = procesarDatos(data);
+
+    $('odo').textContent = fmt.km(resumen.km_actual);
+    $('v-km').textContent = fmt.km(resumen.km_desde_cero);
+    $('v-l').textContent = fmt.lt(resumen.litros_acum);
+    $('v-m').textContent = fmt.el(resumen.media_eur_l) + ' €';
+    $('v-c').textContent = resumen.ultimo_consumo == null ? 'Pendiente' : nf(2).format(resumen.ultimo_consumo);
+    $('v-cn').textContent = 'Faltan ' + fmt.km(resumen.faltan_km);
+    $('v-f').textContent = fmt.eur(resumen.combustible);
+    $('v-t').textContent = fmt.eur(resumen.total);
+
+    // Gráfica: precio por litro sobre eje de tiempo sept 2026 - jul 2027
+    const parse = d3.timeParse('%Y-%m-%d');
+    const pts = acum.map(r => ({...r, d: parse(r.fecha)}));
+    const svg = d3.select('#chart-precio');
+    svg.selectAll('*').remove();
+    const W = 800, H = 320, m = {t: 24, r: 40, b: 44, l: 56};
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+    const x = d3.scaleTime([parse('2026-09-01'), parse('2027-07-31')], [m.l, W - m.r]);
+    const vals = pts.flatMap(r => [r.eur_l, r.media_eur_l]);
+    const ext = d3.extent(vals);
+    const pad = (ext[1] - ext[0]) * 0.25 || 0.1;
+    const y = d3.scaleLinear([ext[0] - pad, ext[1] + pad], [H - m.b, m.t]).nice(4);
+    svg.append('g').selectAll('line').data(y.ticks(4)).join('line').attr('class', 'grid-line').attr('x1', m.l).attr('x2', W - m.r).attr('y1', d => y(d)).attr('y2', d => y(d));
+    svg.append('g').attr('class', 'ax').attr('transform', `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(4).tickSize(0).tickFormat(v => nf(2).format(v))).select('.domain').remove();
+    const mes = new Intl.DateTimeFormat('es-ES', {month: 'short'});
+    svg.append('g').attr('class', 'ax').attr('transform', `translate(0,${H - m.b})`)
+      .call(d3.axisBottom(x).ticks(d3.timeMonth.every(1)).tickFormat(d => {
+        const mm = d.getMonth();
+        const base = mes.format(d).replace('.', '');
+        return (mm === 8 || mm === 0) ? `${base} ${String(d.getFullYear()).slice(2)}` : base;
+      }));
+    svg.append('text').attr('class', 'ax').attr('x', 14).attr('y', m.t - 8).style('fill', 'var(--muted)').style('font-size', '12px').text('€/L');
+    svg.append('path').datum(pts).attr('class', 'avg-line').attr('d', d3.line().x(r => x(r.d)).y(r => y(r.media_eur_l)));
+    svg.append('path').datum(pts).attr('class', 'price-line').attr('d', d3.line().x(r => x(r.d)).y(r => y(r.eur_l)));
+    svg.append('g').selectAll('circle').data(pts).join('circle').attr('class', 'dot').attr('cx', r => x(r.d)).attr('cy', r => y(r.eur_l)).attr('r', 5)
+      .append('title').text(r => `${fdate(r.fecha)} · ${fmt.el(r.eur_l)} €/L`);
+    const lblPos = (r, i) => i === 0 ? {dx: -10, dy: -10, a: 'end'} : (i === pts.length - 1 ? {dx: 12, dy: 4, a: 'start'} : {dx: 0, dy: 20, a: 'middle'});
+    svg.append('g').selectAll('text').data(pts).join('text').attr('class', 'dot-label')
+      .attr('x', (r, i) => x(r.d) + lblPos(r, i).dx).attr('y', (r, i) => y(r.eur_l) + lblPos(r, i).dy)
+      .attr('text-anchor', (r, i) => lblPos(r, i).a).text(r => fmt.el(r.eur_l));
+
+    ['tabla-tramos', 'tabla-rep', 'tabla-mant'].forEach(id => $(id).querySelector('tbody').innerHTML = '');
+
+    // Tramos
+    const vacio = $('tramos-vacio');
+    vacio.hidden = tramos.length > 0;
+    vacio.textContent = `Primer tramo pendiente: se calculará al pasar de ${nf(0).format(resumen.proximo_cierre)} km.`;
+    tramos.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="l">${r.tramo}</td><td class="l">${fdate(r.fecha)}</td><td>${nf(0).format(r.km)}</td><td>${nf(2).format(r.litros)}</td><td>${nf(2).format(r.consumo_l100)}</td>`;
+      $('tabla-tramos').querySelector('tbody').appendChild(tr);
+    });
+
+    // Repostajes
+    acum.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${r.n}</td><td class="l">${fdate(r.fecha)}</td><td>${nf(0).format(r.km_totales)}</td><td>${nf(0).format(r.km_parciales)}</td><td>${nf(2).format(r.litros)}</td><td>${nf(2).format(r.litros_acum)}</td><td>${fmt.el(r.eur_l)}</td><td>${fmt.el(r.media_eur_l)}</td><td>${fmt.eur(r.importe)}</td>`;
+      $('tabla-rep').querySelector('tbody').appendChild(tr);
+    });
+
+    // Mantenimiento
+    data.mantenimiento.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="l wrap-ok">${r.concepto}</td><td class="l">${fdate(r.fecha)}</td><td>${nf(0).format(r.km)}</td><td>${fmt.eur(Number(r.importe))}</td>`;
+      $('tabla-mant').querySelector('tbody').appendChild(tr);
+    });
+  }
+
+  render();
+</script>
+
+</html>
