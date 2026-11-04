@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@600;700&display=swap">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <style>
-  /* Layout: panel de control de la moto. Cabecera con el cuentakilómetros, cifras clave, gráfica de precio en eje de tiempo sept-ago, tramos de 2.000 km, tablas. */
+  /* Layout: panel de control de la moto. Cabecera con el cuentakilómetros, cifras clave, gráfica de precio en eje de tiempo sept-jul, tramos de 2.000 km, tablas. */
   :root {
     --bg: #f1efec;
     --surface: #ffffff;
@@ -109,7 +109,7 @@
   <header>
     <div>
       <h1>Ducati Scrambler 1100</h1>
-      <p class="sub">Combustible y gastos · sept 2026 – ago 2027</p>
+      <p class="sub">Combustible y gastos · sept 2026 – jul 2027</p>
     </div>
     <div class="odo">
       <div class="lbl">Cuentakilómetros</div>
@@ -128,7 +128,7 @@
 
   <section>
     <h2>Precio por litro</h2>
-    <p class="desc">Línea roja: precio de cada repostaje. Línea discontinua: media acumulada. Eje de tiempo de septiembre 2026 a agosto 2027.</p>
+    <p class="desc">Línea roja: precio de cada repostaje. Línea discontinua: media acumulada. Eje de tiempo de septiembre 2026 a julio 2027.</p>
     <div class="panel scroll"><div class="chart"><svg id="chart-precio" role="img" aria-label="Evolución del precio por litro"></svg></div></div>
   </section>
 
@@ -243,14 +243,14 @@
     $('v-f').textContent = fmt.eur(resumen.combustible);
     $('v-t').textContent = fmt.eur(resumen.total);
 
-    // Gráfica: precio por litro sobre eje de tiempo sept 2026 - ago 2027
+    // Gráfica: precio por litro sobre eje de tiempo sept 2026 - jul 2027
     const parse = d3.timeParse('%Y-%m-%d');
     const pts = acum.map(r => ({...r, d: parse(r.fecha)}));
     const svg = d3.select('#chart-precio');
     svg.selectAll('*').remove();
     const W = 800, H = 320, m = {t: 24, r: 40, b: 44, l: 56};
     svg.attr('viewBox', `0 0 ${W} ${H}`);
-    const x = d3.scaleTime([parse('2026-09-01'), parse('2027-08-31')], [m.l, W - m.r]);
+    const x = d3.scaleTime([parse('2026-09-01'), parse('2027-07-31')], [m.l, W - m.r]);
     const vals = pts.flatMap(r => [r.eur_l, r.media_eur_l]);
     const ext = d3.extent(vals);
     const pad = (ext[1] - ext[0]) * 0.25 || 0.1;
